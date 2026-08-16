@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:;">
+<title>DM启动台</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header id="titlebar">
+    <div class="drag">
+      <span class="logo">DM</span>
+      <span class="title">DM启动台</span>
+    </div>
+    <div class="tools">
+      <input id="search" type="text" placeholder="搜索游戏…" spellcheck="false">
+      <select id="sort" title="排序方式">
+        <option value="name-asc">名称 A→Z</option>
+        <option value="name-desc">名称 Z→A</option>
+        <option value="mtime-desc">修改时间 新→旧</option>
+        <option value="mtime-asc">修改时间 旧→新</option>
+        <option value="random">随机</option>
+      </select>
+      <button class="tbtn wide" id="group-btn" title="按分组分类（开/关）">分组</button>
+      <button class="tbtn wide" id="bpm-btn" title="大屏模式（支持手柄）">大屏</button>
+      <button class="tbtn" id="refresh" title="重新扫描">⟳</button>
+      <button class="tbtn" id="settings-btn" title="设置">⚙</button>
+      <button class="tbtn" id="min-btn" title="最小化">–</button>
+      <button class="tbtn" id="close-btn" title="关闭到托盘">✕</button>
+    </div>
+  </header>
+  <!-- 大屏模式顶栏 -->
+  <header id="bpm-bar">
+    <button class="bpm-exit" id="bpm-exit">← 退出大屏</button>
+    <input id="bpm-search" type="text" placeholder="搜索游戏…" spellcheck="false">
+    <div class="spacer"></div>
+    <span id="bpm-hint">手柄：方向键移动 · A 启动 · B / START 退出</span>
+  </header>
+  <main id="grid"></main>
+  <footer id="statusbar">正在加载…</footer>
+</div>
+
+<div id="ctxmenu"></div>
+
+<div id="args-modal" class="modal hidden">
+  <div class="panel" style="width:440px">
+    <h2 id="args-title">设置启动参数</h2>
+    <div class="row"><input id="args-input" type="text" placeholder="例如：-windowed -dx11"></div>
+    <div class="row" style="justify-content:flex-end">
+      <button class="btn" id="args-cancel">取消</button>
+      <button class="btn primary" id="args-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<div id="settings-modal" class="modal hidden">
+  <div class="panel">
+    <h2>设置</h2>
+    <div class="row">
+      <label style="width:80px">扫描深度</label>
+      <select id="set-depth">
+        <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+        <option value="4">4（默认）</option><option value="6">6</option><option value="8">8</option>
+      </select>
+      <span style="color:rgba(255,255,255,.45);font-size:12px">层级越深扫描越慢</span>
+    </div>
+    <div class="row">
+      <label style="width:80px">最小大小</label>
+      <input id="set-minmb" type="number" min="0" step="1" style="width:90px">
+      <span style="color:rgba(255,255,255,.45);font-size:12px">MB，小于此大小的文件夹不算游戏（默认 10，防卸载残留；0 = 不过滤）</span>
+    </div>
+    <div class="row">
+      <label style="width:80px">游戏图标</label>
+      <button class="btn" id="icon-reidentify-btn">🖼 重新识别图标</button>
+      <span style="color:rgba(255,255,255,.45);font-size:12px">重新从本地查找/提取所有游戏图标（exe 高清 256px）</span>
+    </div>
+    <div class="row">
+      <label style="width:80px">帮助</label>
+      <button class="btn" id="about-btn">📖 使用说明</button>
+      <span style="color:rgba(255,255,255,.45);font-size:12px">面向新手的图文操作指南</span>
+    </div>
+    <div class="row">
+      <label style="width:80px">分组管理</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="grp-import">📂 导入目录…</button>
+        <button class="btn" id="grp-steam">+ Steam</button>
+        <button class="btn" id="grp-wegame">+ WeGame</button>
+        <button class="btn" id="grp-epic">+ Epic</button>
+      </div>
+    </div>
+    <div id="grp-list" style="overflow:auto;max-height:340px"></div>
+    <div class="row" style="justify-content:flex-end">
+      <button class="btn" id="set-cancel">关闭</button>
+      <button class="btn primary" id="set-save">保存并重新扫描</button>
+    </div>
+  </div>
+</div>
+
+<!-- 重命名弹窗 -->
+<div id="name-modal" class="modal hidden">
+  <div class="panel" style="width:440px">
+    <h2 id="name-title">重命名</h2>
+    <div class="row"><input id="name-input" type="text" placeholder="显示名称（留空恢复默认）" spellcheck="false"></div>
+    <div class="row" style="justify-content:flex-end">
+      <button class="btn" id="name-cancel">取消</button>
+      <button class="btn primary" id="name-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 分组路径二级弹窗 -->
+<div id="grp-modal" class="modal hidden">
+  <div class="panel" style="width:920px">
+    <h2 id="grp-modal-title">分组详情</h2>
+    <div style="font-size:12px;color:rgba(255,255,255,.5)">该分组包含的目录（游戏扫描范围）</div>
+    <div id="grp-modal-dirs" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    <div class="row"><button class="btn" id="grp-modal-add">+ 添加目录…</button></div>
+    <div style="font-size:12px;color:rgba(255,255,255,.5)">已排除的游戏文件夹（不会再被扫描）</div>
+    <div id="grp-modal-excluded" style="display:flex;flex-direction:column;gap:6px;max-height:150px;overflow:auto"></div>
+    <div style="font-size:12px;color:rgba(255,255,255,.5)">该分组下的游戏（<span id="grp-games-count">0</span>）</div>
+    <div style="overflow:auto;max-height:240px">
+      <table class="games">
+        <thead><tr><th>游戏</th><th>启动程序</th><th style="width:380px">操作</th></tr></thead>
+        <tbody id="grp-games-tbody"></tbody>
+      </table>
+    </div>
+    <div class="row" style="justify-content:flex-end">
+      <button class="btn primary" id="grp-modal-close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 顶部消息提示（2 秒自动消失） -->
+<div id="toast"></div>
+
+<!-- 使用说明弹窗 -->
+<div id="about-modal" class="modal hidden">
+  <div class="panel" style="width:660px;height:82vh">
+    <h2>DM启动台 · 使用说明</h2>
+    <div id="about-content" style="flex:1;overflow:auto;white-space:pre-wrap;font-size:13.5px;line-height:1.8;color:rgba(255,255,255,.88)"></div>
+    <div class="row" style="justify-content:flex-end">
+      <button class="btn primary" id="about-close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script src="renderer.js"></script>
+</body>
+</html>

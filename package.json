@@ -1,0 +1,39 @@
+{
+  "name": "dm-launcher",
+  "productName": "DM启动台",
+  "version": "1.0.0",
+  "description": "DM启动台 - 本地游戏启动器（扫描游戏目录，一键启动）",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "license": "MIT",
+  "allowScripts": {
+    "electron": true
+  },
+  "build": {
+    "appId": "com.dm.launcher",
+    "productName": "DM启动台",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "scanner.js",
+      "index.html",
+      "styles.css",
+      "assets/**",
+      "使用说明.md"
+    ],
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^43.4.0"
+  }
+}
