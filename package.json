@@ -16,6 +16,7 @@
     "appId": "com.dm.launcher",
     "productName": "DM启动台",
     "npmRebuild": false,
+    "electronDist": "node_modules/electron/dist",
     "files": [
       "main.js",
       "preload.js",
