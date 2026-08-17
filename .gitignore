@@ -5,3 +5,4 @@ out/
 .smoke-data/
 .electron-cache/
 .npm-cache/
+.eb-cache/
