@@ -3,6 +3,7 @@
   "productName": "DM启动台",
   "version": "1.0.0",
   "description": "DM启动台 - 本地游戏启动器（扫描游戏目录，一键启动）",
+  "author": "dm12111437",
   "main": "main.js",
   "scripts": {
     "start": "electron ."
@@ -14,6 +15,7 @@
   "build": {
     "appId": "com.dm.launcher",
     "productName": "DM启动台",
+    "npmRebuild": false,
     "files": [
       "main.js",
       "preload.js",
@@ -25,7 +27,10 @@
       "使用说明.md"
     ],
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "assets/icon.png"
     },
     "nsis": {
@@ -34,6 +39,7 @@
     }
   },
   "devDependencies": {
-    "electron": "^43.4.0"
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3"
   }
 }
