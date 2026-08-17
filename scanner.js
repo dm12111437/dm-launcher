@@ -351,11 +351,6 @@ async function detectPlatform(type) {
   return { type, layout: 'subdirs', dirs: [] };
 }
 
-// ================= 图标文件可用性（存在且非空） =================
-function iconFileUsable(p) {
-  try { return !!p && fs.existsSync(p) && fs.statSync(p).size > 0; } catch { return false; }
-}
-
 module.exports = {
   findExes,
   normName,
@@ -366,6 +361,5 @@ module.exports = {
   makeGame,
   scanGames,
   parseLibraryFoldersVdf,
-  detectPlatform,
-  iconFileUsable
+  detectPlatform
 };

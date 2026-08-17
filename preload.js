@@ -11,7 +11,6 @@ contextBridge.exposeInMainWorld('dm', {
   excludeGame: (folder) => ipcRenderer.invoke('games:exclude', folder),
   unexcludeGame: (folder) => ipcRenderer.invoke('games:unexclude', folder),
   getAbout: () => ipcRenderer.invoke('about:get'),
-  reidentifyIcons: () => ipcRenderer.invoke('icons:reidentify'),
   setFullscreen: (flag) => ipcRenderer.invoke('window:fullscreen', flag),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (s) => ipcRenderer.invoke('settings:set', s),

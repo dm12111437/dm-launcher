@@ -2,7 +2,7 @@
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
-const { scanGames, dedupePaths, folderSize, pickMain, parseLibraryFoldersVdf, detectPlatform, iconFileUsable } = require('./scanner');
+const { scanGames, dedupePaths, folderSize, pickMain, parseLibraryFoldersVdf, detectPlatform } = require('./scanner');
 
 const TMP = path.join(__dirname, '.testdata');
 const ZONE_U = path.join(TMP, 'U1'); // 卸载屏蔽测试区
@@ -91,13 +91,7 @@ async function fixture() {
   const sameCount = gz.filter((x) => x.name === 'GameWithUninstall').length;
   ok(sameCount === 1, `同组重复路径只算一次（实际 ${sameCount}）`);
 
-  // 6) 图标文件可用性校验（存在且非空）
-  const ico = path.join(TMP, 'icotest.png');
-  await fsp.writeFile(ico, 'x');
-  ok(iconFileUsable(ico) === true, '存在非空文件可用');
-  ok(iconFileUsable(path.join(TMP, 'nope.png')) === false, '不存在文件不可用');
-
-  // 7) 回归：去重 / VDF / Epic 探测 / D:\Game
+  // 6) 回归：去重 / VDF / Epic 探测 / D:\Game
   ok(dedupePaths(['D:\\A', 'd:\\a\\']).length === 1, '路径去重回归');
   ok(parseLibraryFoldersVdf('"path" "C:\\\\Steam"').length === 1, 'VDF 解析回归');
   const wg = await detectPlatform('wegame');

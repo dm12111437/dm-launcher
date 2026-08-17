@@ -3,9 +3,8 @@ const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, shell, nativeImage } = 
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
-const crypto = require('crypto');
 const { spawn } = require('child_process');
-const { scanGames, detectPlatform, dedupePaths, iconFileUsable, findExes } = require('./scanner');
+const { scanGames, detectPlatform, dedupePaths } = require('./scanner');
 
 const APP_DIR = __dirname;
 const ASSETS = path.join(APP_DIR, 'assets');
@@ -42,7 +41,6 @@ function getSettings() {
 function saveSettings(s) { saveJson(settingsFile(), s); }
 function getOverrides() { return loadJson(overridesFile(), {}); }
 function saveOverrides(o) { saveJson(overridesFile(), o); }
-function iconCachePath(exePath) { return path.join(app.getPath('userData'), 'icons', crypto.createHash('sha1').update(exePath).digest('hex') + '.png'); }
 
 function newGroupId() { return 'g-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7); }
 
@@ -50,9 +48,9 @@ function newGroupId() { return 'g-' + Date.now().toString(36) + '-' + Math.rando
 async function doScan() {
   const settings = getSettings();
   const depth = Math.min(8, Math.max(1, settings.scanDepth || 4));
-  let scanned;
+  let games;
   try {
-    scanned = await scanGames({
+    games = await scanGames({
       groups: settings.groups,
       depth,
       overrides: getOverrides(),
@@ -62,65 +60,10 @@ async function doScan() {
   } catch {
     return { error: '扫描失败' };
   }
-  // 图标：直接使用 exe 默认图标（app.getFileIcon 进程内获取；主 exe 是通用蓝白图时换同文件夹真实图标）
-  const games = [];
-  for (const g of scanned) {
-    let iconPath = null;
-    if (g.exePath) {
-      const cached = iconCachePath(g.exePath);
-      if (iconFileUsable(cached)) {
-        iconPath = cached;
-      } else if (!iconFailed.has(g.folder)) {
-        const img = await resolveGameIcon(g.exePath, g.folder);
-        if (img) {
-          try { fs.writeFileSync(cached, img.toPNG()); iconPath = cached; } catch {}
-        }
-        if (!iconPath) iconFailed.add(g.folder);
-      }
-    }
-    games.push({ ...g, iconPath, iconFailed: !!g.exePath && iconFailed.has(g.folder) });
-  }
+  // 无图标功能：游戏卡片统一使用默认样式，不支持修改图标
   lastGames = games;
   return games;
 }
-
-// ---------- 默认 exe 图标（Electron 原生 app.getFileIcon，即资源管理器显示的图标） ----------
-// 通用图标检测：蓝白通用 exe 图标的颜色数很少（<40），真实游戏图标颜色丰富
-const ICON_COLOR_MIN = 40;
-
-async function getFileIconInfo(exe) {
-  try {
-    const img = await app.getFileIcon(exe, { size: 'large' });
-    if (!img || img.isEmpty()) return null;
-    let colors = 0;
-    try {
-      const buf = img.getBitmap(); // BGRA
-      const set = new Set();
-      for (let i = 0; i + 4 <= buf.length; i += 8) set.add(buf.readUInt32LE(i) & 0x00FFFFFF);
-      colors = set.size;
-    } catch {}
-    return { img, colors };
-  } catch {
-    return null;
-  }
-}
-
-// 主 exe 图标为通用图时，换用同文件夹其他 exe 的真实图标（如 VALORANT.exe 无图标 → 登录器的图标）
-async function resolveGameIcon(exe, folder) {
-  const info = await getFileIconInfo(exe);
-  if (info && info.colors >= ICON_COLOR_MIN) return info.img;
-  try {
-    const alts = await findExes(folder, 0, 2);
-    for (const alt of alts) {
-      if (alt === exe) continue;
-      const a = await getFileIconInfo(alt);
-      if (a && a.colors >= ICON_COLOR_MIN) return a.img;
-    }
-  } catch {}
-  return info ? info.img : null; // 兜底：主 exe 的图标（哪怕是通用图）
-}
-// 提取彻底失败的文件夹（exe 无图标资源）——渲染端据此显示最终占位
-const iconFailed = new Set();
 
 // ---------- 启动游戏 ----------
 function findCached(folder) { return lastGames.find((g) => g.folder === folder) || null; }
@@ -254,11 +197,6 @@ ipcMain.handle('games:unexclude', (e, folder) => {
 });
 ipcMain.handle('about:get', () => {
   try { return fs.readFileSync(path.join(APP_DIR, '使用说明.md'), 'utf8'); } catch { return '（使用说明文件缺失，请到项目目录查看 使用说明.md）'; }
-});
-// 重新识别图标：只清空失败标记，**不删除任何已有图标缓存**（原导入小图标保留）
-ipcMain.handle('icons:reidentify', () => {
-  iconFailed.clear();
-  return 0;
 });
 // 大屏模式：切换全屏
 ipcMain.handle('window:fullscreen', (e, flag) => { if (win) win.setFullScreen(!!flag); });

@@ -11,7 +11,6 @@ let grpModalTarget = null;
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
-function fileUrl(p) { return 'file:///' + String(p).replace(/\\/g, '/'); }
 function status(t) { $('#statusbar').textContent = t; }
 function disp(g) { return g.displayName || g.name; }
 
@@ -68,9 +67,9 @@ function dedupeFlat(list) {
   return out;
 }
 
-function iconHtml(g) {
-  // 只有默认导入的 exe 小图标：有则显示，无则占位手柄（提取中/失败均不再显示转圈）
-  return g.iconPath ? `<img src="${fileUrl(g.iconPath)}" alt="">` : '🎮';
+// 无图标功能：所有游戏卡片统一使用默认样式（不支持修改图标）
+function iconHtml() {
+  return '🎮';
 }
 
 async function refresh() {
@@ -108,20 +107,10 @@ function makeCard(g) {
   const card = document.createElement('div');
   card.className = 'card' + (g.exePath ? '' : ' missing');
   card.dataset.folder = g.folder;
-  card.innerHTML = `<div class="ic">${iconHtml(g)}</div><div class="nm">${esc(disp(g))}</div>`;
-  bindImgError(card);
+  card.innerHTML = `<div class="ic">${iconHtml()}</div><div class="nm">${esc(disp(g))}</div>`;
   card.addEventListener('click', () => launch(g));
   card.addEventListener('contextmenu', (e) => { e.preventDefault(); showCtx(e, g); });
   return card;
-}
-
-// 图片加载失败（图标文件损坏/被删）→ 回退占位图
-function bindImgError(card) {
-  const img = card.querySelector('.ic img');
-  if (img) img.addEventListener('error', () => {
-    const ic = card.querySelector('.ic');
-    if (ic) ic.textContent = '🎮';
-  });
 }
 function render() {
   const grid = $('#grid');
@@ -560,12 +549,6 @@ $('#about-btn').addEventListener('click', async () => {
   const md = await window.dm.getAbout();
   $('#about-content').innerHTML = mdToHtml(md);
   $('#about-modal').classList.remove('hidden');
-});
-$('#icon-reidentify-btn').addEventListener('click', async () => {
-  showToast('正在重新识别图标…', 'ok');
-  await window.dm.reidentifyIcons();
-  await refresh();
-  showToast('图标已重新识别（高清图标陆续加载中）', 'ok');
 });
 $('#about-close').addEventListener('click', () => $('#about-modal').classList.add('hidden'));
 $('#grp-import').addEventListener('click', async () => {
