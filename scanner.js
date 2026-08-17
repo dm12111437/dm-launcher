@@ -351,6 +351,35 @@ async function detectPlatform(type) {
   return { type, layout: 'subdirs', dirs: [] };
 }
 
+// 目录内搜索图标文件（exe 无图标时的兜底）：
+// 优先名字含 icon 或与文件夹同名的 .ico/.png，其次任意 .ico；搜索深度 ≤2，跳过常见资源目录
+async function findFolderIcon(folder) {
+  const found = [];
+  const walk = async (dir, depth) => {
+    let entries;
+    try { entries = await fsp.readdir(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (!e.isFile()) continue;
+      const low = e.name.toLowerCase();
+      if (low.endsWith('.ico')) found.push({ p: path.join(dir, e.name), kind: 'ico' });
+      else if (low.endsWith('.png')) found.push({ p: path.join(dir, e.name), kind: 'png' });
+    }
+    if (depth < 2) {
+      for (const e of entries) {
+        if (e.isDirectory() && !/^(bin|logs?|cache|data|content|engine|lib|redist|support|screenshots?)/i.test(e.name)) {
+          await walk(path.join(dir, e.name), depth + 1);
+        }
+      }
+    }
+  };
+  await walk(folder, 0);
+  if (!found.length) return null;
+  const base = path.basename(folder).toLowerCase();
+  const prefer = found.find((f) => /icon/.test(f.p.toLowerCase()) || path.basename(f.p, path.extname(f.p)).toLowerCase() === base);
+  const anyIco = found.find((f) => f.kind === 'ico');
+  return prefer ? prefer.p : (anyIco ? anyIco.p : null);
+}
+
 module.exports = {
   findExes,
   normName,
@@ -361,5 +390,6 @@ module.exports = {
   makeGame,
   scanGames,
   parseLibraryFoldersVdf,
-  detectPlatform
+  detectPlatform,
+  findFolderIcon
 };

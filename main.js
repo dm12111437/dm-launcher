@@ -3,8 +3,9 @@ const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, shell, nativeImage } = 
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
-const { scanGames, detectPlatform, dedupePaths } = require('./scanner');
+const { scanGames, detectPlatform, dedupePaths, findFolderIcon } = require('./scanner');
 
 const APP_DIR = __dirname;
 const ASSETS = path.join(APP_DIR, 'assets');
@@ -41,16 +42,32 @@ function getSettings() {
 function saveSettings(s) { saveJson(settingsFile(), s); }
 function getOverrides() { return loadJson(overridesFile(), {}); }
 function saveOverrides(o) { saveJson(overridesFile(), o); }
+function iconCachePath(exePath) { return path.join(app.getPath('userData'), 'icons', crypto.createHash('sha1').update(exePath).digest('hex') + '.png'); }
 
 function newGroupId() { return 'g-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7); }
+
+// ---------- 图标（简化版） ----------
+// 优先直接用 exe 的图标（app.getFileIcon = 资源管理器显示的图标）；exe 无图标时搜索目录内图标文件
+async function getExeIcon(exe) {
+  try {
+    const img = await app.getFileIcon(exe, { size: 'large' });
+    if (img && !img.isEmpty()) return img;
+  } catch {}
+  return null;
+}
+function iconFileUsable(p) {
+  try { return !!p && fs.existsSync(p) && fs.statSync(p).size > 0; } catch { return false; }
+}
+// 确实没有图标的游戏（exe 与目录都没有），本次会话不再重复尝试
+const iconFailed = new Set();
 
 // ---------- 扫描与识别 ----------
 async function doScan() {
   const settings = getSettings();
   const depth = Math.min(8, Math.max(1, settings.scanDepth || 4));
-  let games;
+  let scanned;
   try {
-    games = await scanGames({
+    scanned = await scanGames({
       groups: settings.groups,
       depth,
       overrides: getOverrides(),
@@ -60,7 +77,28 @@ async function doScan() {
   } catch {
     return { error: '扫描失败' };
   }
-  // 无图标功能：游戏卡片统一使用默认样式，不支持修改图标
+  // 图标解析：exe 图标（缓存）→ 目录内图标文件 → 占位
+  const games = [];
+  for (const g of scanned) {
+    let iconPath = null;
+    if (g.exePath) {
+      const cached = iconCachePath(g.exePath);
+      if (iconFileUsable(cached)) {
+        iconPath = cached;
+      } else if (!iconFailed.has(g.folder)) {
+        const img = await getExeIcon(g.exePath);
+        if (img) {
+          try { fs.writeFileSync(cached, img.toPNG()); iconPath = cached; } catch {}
+        }
+        if (!iconPath) {
+          const folderIcon = await findFolderIcon(g.folder);
+          if (folderIcon) iconPath = folderIcon;
+        }
+        if (!iconPath) iconFailed.add(g.folder);
+      }
+    }
+    games.push({ ...g, iconPath, iconFailed: !!g.exePath && iconFailed.has(g.folder) });
+  }
   lastGames = games;
   return games;
 }

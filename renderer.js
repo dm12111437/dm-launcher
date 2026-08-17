@@ -11,6 +11,7 @@ let grpModalTarget = null;
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+function fileUrl(p) { return 'file:///' + String(p).replace(/\\/g, '/'); }
 function status(t) { $('#statusbar').textContent = t; }
 function disp(g) { return g.displayName || g.name; }
 
@@ -67,9 +68,9 @@ function dedupeFlat(list) {
   return out;
 }
 
-// 无图标功能：所有游戏卡片统一使用默认样式（不支持修改图标）
-function iconHtml() {
-  return '🎮';
+// 图标：exe 图标 / 目录图标文件 → 显示；都没有 → 占位手柄
+function iconHtml(g) {
+  return g.iconPath ? `<img src="${fileUrl(g.iconPath)}" alt="">` : '🎮';
 }
 
 async function refresh() {
@@ -107,10 +108,20 @@ function makeCard(g) {
   const card = document.createElement('div');
   card.className = 'card' + (g.exePath ? '' : ' missing');
   card.dataset.folder = g.folder;
-  card.innerHTML = `<div class="ic">${iconHtml()}</div><div class="nm">${esc(disp(g))}</div>`;
+  card.innerHTML = `<div class="ic">${iconHtml(g)}</div><div class="nm">${esc(disp(g))}</div>`;
+  bindImgError(card);
   card.addEventListener('click', () => launch(g));
   card.addEventListener('contextmenu', (e) => { e.preventDefault(); showCtx(e, g); });
   return card;
+}
+
+// 图标文件加载失败（损坏/被删）→ 回退占位
+function bindImgError(card) {
+  const img = card.querySelector('.ic img');
+  if (img) img.addEventListener('error', () => {
+    const ic = card.querySelector('.ic');
+    if (ic) ic.textContent = '🎮';
+  });
 }
 function render() {
   const grid = $('#grid');
