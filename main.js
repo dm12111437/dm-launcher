@@ -299,6 +299,8 @@ ipcMain.handle('about:get', () => {
 ipcMain.handle('icon:set-local', async (e, folder) => {
   const r = await dialog.showOpenDialog(win || undefined, {
     title: '选择图标图片',
+    // 直接打开该游戏的目录，方便就地找图标文件
+    defaultPath: folder || undefined,
     filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'ico', 'gif', 'webp', 'bmp'] }],
     properties: ['openFile']
   });
