@@ -46,20 +46,61 @@ function iconCachePath(exePath) { return path.join(app.getPath('userData'), 'ico
 
 function newGroupId() { return 'g-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7); }
 
-// ---------- 图标（简化版） ----------
-// 优先直接用 exe 的图标（app.getFileIcon = 资源管理器显示的图标）；exe 无图标时搜索目录内图标文件
-async function getExeIcon(exe) {
-  try {
-    const img = await app.getFileIcon(exe, { size: 'large' });
-    if (img && !img.isEmpty()) return img;
-  } catch {}
-  return null;
-}
+// ---------- 图标（第一版规则：ExtractAssociatedIcon 逐游戏提取） ----------
+// 第一版机制：每个游戏用 PowerShell 从 exe 直接提取 32px 小图标，缓存复用；
+// exe 提取失败时兜底搜索目录内图标文件；都没有才显示占位
 function iconFileUsable(p) {
   try { return !!p && fs.existsSync(p) && fs.statSync(p).size > 0; } catch { return false; }
 }
+function sendIcon(folder, png) { if (win && !win.isDestroyed()) win.webContents.send('icon-ready', { name: folder, png }); }
+
+// 逐游戏提取（第一版实现）：ExtractAssociatedIcon → PNG
+function extractIcon(exe, png) {
+  return new Promise((resolve) => {
+    const q = (s) => "'" + s.replace(/'/g, "''") + "'";
+    const script = [
+      'Add-Type -AssemblyName System.Drawing',
+      `$src=${q(exe)}`,
+      `$dst=${q(png)}`,
+      'try {',
+      '  $icon=[System.Drawing.Icon]::ExtractAssociatedIcon($src)',
+      '  if($icon){ $icon.ToBitmap().Save($dst,[System.Drawing.Imaging.ImageFormat]::Png); $icon.Dispose() }',
+      '} catch {}'
+    ].join('; ');
+    const enc = Buffer.from(script, 'utf16le').toString('base64');
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', enc], { stdio: 'ignore', windowsHide: true });
+    child.on('error', () => resolve(false));
+    child.on('close', (code) => resolve(code === 0 && fs.existsSync(png)));
+  });
+}
+
 // 确实没有图标的游戏（exe 与目录都没有），本次会话不再重复尝试
 const iconFailed = new Set();
+
+// 顺序提取缺失图标（第一版流程），完成后以 icon-ready 事件刷新卡片
+function scheduleIcons(games) {
+  let i = 0;
+  const next = () => {
+    while (i < games.length) {
+      const g = games[i++];
+      if (!g.exePath || g.iconPath || iconFailed.has(g.folder)) continue;
+      const png = iconCachePath(g.exePath);
+      if (iconFileUsable(png)) { sendIcon(g.folder, png); continue; }
+      extractIcon(g.exePath, png).then(async (ok) => {
+        if (ok) {
+          sendIcon(g.folder, png);
+        } else {
+          // exe 无图标 → 目录图标文件兜底
+          const folderIcon = await findFolderIcon(g.folder);
+          if (folderIcon) sendIcon(g.folder, folderIcon);
+          else iconFailed.add(g.folder);
+        }
+      }).finally(next);
+      return;
+    }
+  };
+  next();
+}
 
 // ---------- 扫描与识别 ----------
 async function doScan() {
@@ -77,29 +118,13 @@ async function doScan() {
   } catch {
     return { error: '扫描失败' };
   }
-  // 图标解析：exe 图标（缓存）→ 目录内图标文件 → 占位
-  const games = [];
-  for (const g of scanned) {
-    let iconPath = null;
-    if (g.exePath) {
-      const cached = iconCachePath(g.exePath);
-      if (iconFileUsable(cached)) {
-        iconPath = cached;
-      } else if (!iconFailed.has(g.folder)) {
-        const img = await getExeIcon(g.exePath);
-        if (img) {
-          try { fs.writeFileSync(cached, img.toPNG()); iconPath = cached; } catch {}
-        }
-        if (!iconPath) {
-          const folderIcon = await findFolderIcon(g.folder);
-          if (folderIcon) iconPath = folderIcon;
-        }
-        if (!iconPath) iconFailed.add(g.folder);
-      }
-    }
-    games.push({ ...g, iconPath, iconFailed: !!g.exePath && iconFailed.has(g.folder) });
-  }
+  // 图标：缓存命中直接带出；未提取的交给 scheduleIcons 后台逐游戏提取
+  const games = scanned.map((g) => {
+    const iconPath = g.exePath && iconFileUsable(iconCachePath(g.exePath)) ? iconCachePath(g.exePath) : null;
+    return { ...g, iconPath };
+  });
   lastGames = games;
+  scheduleIcons(games);
   return games;
 }
 

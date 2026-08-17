@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('dm', {
   minimize: () => ipcRenderer.invoke('window:minimize'),
   hide: () => ipcRenderer.invoke('window:hide'),
   quit: () => ipcRenderer.invoke('app:quit'),
+  onIcon: (cb) => ipcRenderer.on('icon-ready', (e, info) => cb(info)),
   onLaunchError: (cb) => ipcRenderer.on('launch-error', (e, info) => cb(info)),
   onToast: (cb) => ipcRenderer.on('toast', (e, info) => cb(info))
 });

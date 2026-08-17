@@ -598,6 +598,19 @@ $('#name-ok').addEventListener('click', async () => {
 $('#name-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#name-ok').click(); });
 document.addEventListener('click', (e) => { if (!e.target.closest('#ctxmenu')) hideCtx(); });
 
+// 图标提取完成 → 更新所有匹配卡片（跨组重复游戏有多张同文件夹卡片，全部要更新）
+window.dm.onIcon((info) => {
+  const cards = document.querySelectorAll('.card');
+  for (const c of cards) {
+    if (c.dataset.folder === info.name) {
+      const ic = c.querySelector('.ic');
+      if (ic) {
+        ic.innerHTML = `<img src="${fileUrl(info.png)}" alt="">`;
+        bindImgError(c);
+      }
+    }
+  }
+});
 window.dm.onLaunchError((info) => alert('启动失败：' + info.name + '\n' + info.message));
 window.dm.onToast((info) => showToast(info.message, info.type));
 
