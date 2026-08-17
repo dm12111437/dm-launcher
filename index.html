@@ -140,6 +140,25 @@
   </div>
 </div>
 
+<!-- 自定义图标弹窗 -->
+<div id="icon-modal" class="modal hidden">
+  <div class="panel" style="width:500px">
+    <h2 id="icon-title">自定义图标</h2>
+    <div class="row">
+      <button class="btn" id="icon-local">📁 选择本地图片…</button>
+      <button class="btn" id="icon-url-btn">🌐 输入图片网址…</button>
+      <button class="btn danger" id="icon-clear">🗑 恢复默认</button>
+    </div>
+    <div class="row hidden" id="icon-url-row">
+      <input id="icon-url-input" type="text" placeholder="https://… 图片地址" spellcheck="false">
+      <button class="btn primary" id="icon-url-ok">下载</button>
+    </div>
+    <div class="row" style="justify-content:flex-end">
+      <button class="btn" id="icon-close">关闭</button>
+    </div>
+  </div>
+</div>
+
 <script src="renderer.js"></script>
 </body>
 </html>

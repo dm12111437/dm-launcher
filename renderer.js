@@ -7,6 +7,7 @@ let ctxTarget = null;
 let argsTarget = null;
 let nameTarget = null;
 let grpModalTarget = null;
+let iconTarget = null;
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -190,6 +191,7 @@ function showCtx(e, g) {
   add('启动游戏', () => launch(g));
   add('打开文件夹', () => window.dm.openPath(g.folder));
   add('更改启动程序…', async () => { const p = await window.dm.chooseExe(g.folder); if (p) refresh(); });
+  add('自定义图标…', () => showIconModal(g));
   if (g.overridden) add('恢复自动识别', async () => { await window.dm.clearOverride(g.folder); refresh(); });
   sep();
   add('重命名…', () => showNameModal(g));
@@ -514,6 +516,16 @@ function startGamepad() {
 }
 function stopGamepad() { if (gpLoopId) { cancelAnimationFrame(gpLoopId); gpLoopId = null; } }
 
+// ---------- 自定义图标 ----------
+function showIconModal(g) {
+  iconTarget = g;
+  $('#icon-title').textContent = '自定义图标：' + disp(g);
+  $('#icon-url-row').classList.add('hidden');
+  $('#icon-url-input').value = '';
+  $('#icon-clear').style.display = g.customIcon ? '' : 'none';
+  $('#icon-modal').classList.remove('hidden');
+}
+
 // ---------- 事件绑定 ----------
 $('#search').addEventListener('input', render);
 $('#sort').addEventListener('change', () => { window.dm.setSettings({ sort: $('#sort').value }); render(); });
@@ -562,6 +574,39 @@ $('#about-btn').addEventListener('click', async () => {
   $('#about-modal').classList.remove('hidden');
 });
 $('#about-close').addEventListener('click', () => $('#about-modal').classList.add('hidden'));
+$('#icon-local').addEventListener('click', async () => {
+  const r = await window.dm.setCustomIconLocal(iconTarget.folder);
+  if (r && r.error) showToast(r.error, 'err');
+  else if (r) {
+    $('#icon-modal').classList.add('hidden');
+    showToast('图标已设置', 'ok');
+    await refresh();
+  }
+});
+$('#icon-url-btn').addEventListener('click', () => {
+  $('#icon-url-row').classList.remove('hidden');
+  $('#icon-url-input').focus();
+});
+$('#icon-url-ok').addEventListener('click', async () => {
+  const url = $('#icon-url-input').value.trim();
+  if (!url) return;
+  showToast('正在下载图标…', 'ok');
+  const r = await window.dm.setCustomIconUrl(iconTarget.folder, url);
+  if (r && r.error) showToast(r.error, 'err');
+  else if (r) {
+    $('#icon-modal').classList.add('hidden');
+    showToast('图标已设置', 'ok');
+    await refresh();
+  }
+});
+$('#icon-url-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#icon-url-ok').click(); });
+$('#icon-clear').addEventListener('click', async () => {
+  await window.dm.clearCustomIcon(iconTarget.folder);
+  $('#icon-modal').classList.add('hidden');
+  showToast('已恢复默认图标', 'ok');
+  await refresh();
+});
+$('#icon-close').addEventListener('click', () => $('#icon-modal').classList.add('hidden'));
 $('#grp-import').addEventListener('click', async () => {
   const groups = await window.dm.importGroups();
   if (groups) { settings.groups = groups; renderGroups(); await refresh(); }

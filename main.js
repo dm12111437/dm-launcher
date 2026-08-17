@@ -1,5 +1,5 @@
 // DM启动台 - 主进程
-const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, shell, nativeImage, net } = require('electron');
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
@@ -43,8 +43,38 @@ function saveSettings(s) { saveJson(settingsFile(), s); }
 function getOverrides() { return loadJson(overridesFile(), {}); }
 function saveOverrides(o) { saveJson(overridesFile(), o); }
 function iconCachePath(exePath) { return path.join(app.getPath('userData'), 'icons', crypto.createHash('sha1').update(exePath).digest('hex') + '.png'); }
+function customIconDir() { return path.join(app.getPath('userData'), 'custom-icons'); }
 
 function newGroupId() { return 'g-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7); }
+
+// ---------- 自定义图标 ----------
+function copyToCustomIcon(src) {
+  try {
+    const ext = path.extname(src).toLowerCase() || '.png';
+    const dest = path.join(customIconDir(), crypto.createHash('sha1').update(src).digest('hex') + ext);
+    if (!fs.existsSync(dest)) fs.copyFileSync(src, dest);
+    return dest;
+  } catch { return null; }
+}
+function imageExtByMagic(buf) {
+  if (buf[0] === 0x89 && buf[1] === 0x50) return '.png';
+  if (buf[0] === 0xFF && buf[1] === 0xD8) return '.jpg';
+  if (buf[0] === 0x47 && buf[1] === 0x49) return '.gif';
+  if (buf[0] === 0x00 && buf[1] === 0x00 && buf[2] === 0x01 && buf[3] === 0x00) return '.ico';
+  if (buf[0] === 0x42 && buf[1] === 0x4D) return '.bmp';
+  if (buf.slice(0, 4).toString('ascii') === 'RIFF' && buf.slice(8, 12).toString('ascii') === 'WEBP') return '.webp';
+  return null;
+}
+async function fetchWithTimeout(url, ms = 15000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const doFetch = (net && net.fetch) ? net.fetch.bind(net) : fetch;
+    const res = await doFetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'DM-Launcher/1.0' } });
+    if (!res.ok) return null;
+    return Buffer.from(await res.arrayBuffer());
+  } catch { return null; } finally { clearTimeout(t); }
+}
 
 // ---------- 图标（第一版规则：ExtractAssociatedIcon 逐游戏提取） ----------
 // 第一版机制：每个游戏用 PowerShell 从 exe 直接提取 32px 小图标，缓存复用；
@@ -118,10 +148,14 @@ async function doScan() {
   } catch {
     return { error: '扫描失败' };
   }
-  // 图标：缓存命中直接带出；未提取的交给 scheduleIcons 后台逐游戏提取
+  // 图标：自定义 → exe 提取缓存 → 交给 scheduleIcons（提取 + 目录兜底）
+  const ov = getOverrides();
   const games = scanned.map((g) => {
-    const iconPath = g.exePath && iconFileUsable(iconCachePath(g.exePath)) ? iconCachePath(g.exePath) : null;
-    return { ...g, iconPath };
+    let iconPath = null;
+    const custom = ov[g.folder] && ov[g.folder].icon;
+    if (custom && iconFileUsable(custom)) iconPath = custom;
+    else if (g.exePath && iconFileUsable(iconCachePath(g.exePath))) iconPath = iconCachePath(g.exePath);
+    return { ...g, iconPath, customIcon: !!custom };
   });
   lastGames = games;
   scheduleIcons(games);
@@ -261,6 +295,44 @@ ipcMain.handle('games:unexclude', (e, folder) => {
 ipcMain.handle('about:get', () => {
   try { return fs.readFileSync(path.join(APP_DIR, '使用说明.md'), 'utf8'); } catch { return '（使用说明文件缺失，请到项目目录查看 使用说明.md）'; }
 });
+// ---------- IPC：自定义图标 ----------
+ipcMain.handle('icon:set-local', async (e, folder) => {
+  const r = await dialog.showOpenDialog(win || undefined, {
+    title: '选择图标图片',
+    filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'ico', 'gif', 'webp', 'bmp'] }],
+    properties: ['openFile']
+  });
+  if (r.canceled || !r.filePaths.length) return null;
+  const dest = copyToCustomIcon(r.filePaths[0]);
+  if (!dest) return { error: '复制图标文件失败' };
+  const ov = getOverrides();
+  ov[folder] = { ...(ov[folder] || {}), icon: dest };
+  saveOverrides(ov);
+  return dest;
+});
+ipcMain.handle('icon:set-url', async (e, folder, url) => {
+  const u = String(url || '').trim();
+  if (!/^https?:\/\//i.test(u)) return { error: '请输入有效的 http/https 图片地址' };
+  const buf = await fetchWithTimeout(u);
+  if (!buf) return { error: '下载失败（网络或超时），请确认能访问该地址' };
+  if (buf.length < 100 || buf.length > 10 * 1024 * 1024) return { error: '文件大小不合法' };
+  const ext = imageExtByMagic(buf);
+  if (!ext) return { error: '下载的内容不是图片文件' };
+  const dest = path.join(customIconDir(), crypto.createHash('sha1').update(u).digest('hex') + ext);
+  try { fs.writeFileSync(dest, buf); } catch { return { error: '保存图标失败' }; }
+  const ov = getOverrides();
+  ov[folder] = { ...(ov[folder] || {}), icon: dest };
+  saveOverrides(ov);
+  return dest;
+});
+ipcMain.handle('icon:clear', (e, folder) => {
+  const ov = getOverrides();
+  if (ov[folder]) {
+    delete ov[folder].icon;
+    if (!Object.keys(ov[folder]).length) delete ov[folder];
+    saveOverrides(ov);
+  }
+});
 // 大屏模式：切换全屏
 ipcMain.handle('window:fullscreen', (e, flag) => { if (win) win.setFullScreen(!!flag); });
 
@@ -349,6 +421,7 @@ if (!gotLock) {
   app.whenReady().then(() => {
     app.setAppUserModelId('com.dm.launcher');
     try { fs.mkdirSync(path.join(app.getPath('userData'), 'icons'), { recursive: true }); } catch {}
+    try { fs.mkdirSync(customIconDir(), { recursive: true }); } catch {}
     createWindow();
     createTray();
   });
